@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-function useOnScreen(ref, threshold = 0.1) {
+/* ─── Hooks ─────────────────────────────────────────────────────────────── */
+function useOnScreen(ref, threshold = 0.12) {
   const [v, setV] = useState(false);
   useEffect(() => {
     const el = ref.current;
@@ -12,373 +13,1016 @@ function useOnScreen(ref, threshold = 0.1) {
   return v;
 }
 
-function useMouse() {
-  const [pos, setPos] = useState({ x: 0, y: 0 });
+function useScrollY() {
+  const [y, setY] = useState(0);
   useEffect(() => {
-    const handler = (e) => setPos({ x: e.clientX, y: e.clientY });
-    window.addEventListener("mousemove", handler);
-    return () => window.removeEventListener("mousemove", handler);
+    const h = () => setY(window.scrollY);
+    window.addEventListener("scroll", h, { passive: true });
+    return () => window.removeEventListener("scroll", h);
   }, []);
-  return pos;
+  return y;
 }
 
-function Reveal({ children, delay = 0, direction = "up", style = {} }) {
+function useIsMob() {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const h = () => setM(window.innerWidth < 768);
+    h(); window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return m;
+}
+
+/* ─── Reveal ─────────────────────────────────────────────────────────────── */
+function Reveal({ children, delay = 0, dir = "up", className = "", style: s = {} }) {
   const ref = useRef(null);
   const v = useOnScreen(ref);
-  const t = { up: "translateY(40px)", left: "translateX(40px)", right: "translateX(-40px)" };
+  const t = { up: "translateY(36px)", left: "translateX(-36px)", right: "translateX(36px)", scale: "scale(0.94)" };
   return (
-    <div ref={ref} style={{ ...style, opacity: v ? 1 : 0, transform: v ? "translate(0)" : (t[direction] || t.up), transition: `opacity 0.9s cubic-bezier(.16,1,.3,1) ${delay}s, transform 0.9s cubic-bezier(.16,1,.3,1) ${delay}s` }}>{children}</div>
+    <div ref={ref} className={className} style={{
+      ...s,
+      opacity: v ? 1 : 0,
+      transform: v ? "none" : (t[dir] || t.up),
+      transition: `opacity 0.85s cubic-bezier(.16,1,.3,1) ${delay}s, transform 0.85s cubic-bezier(.16,1,.3,1) ${delay}s`
+    }}>{children}</div>
   );
 }
 
-function Typewriter({ words, speed = 70, pause = 2400 }) {
+/* ─── Typewriter ─────────────────────────────────────────────────────────── */
+function Typewriter({ words, speed = 68, pause = 2200 }) {
   const [text, setText] = useState("");
   const [wi, setWi] = useState(0);
   const [ci, setCi] = useState(0);
   const [del, setDel] = useState(false);
   useEffect(() => {
     const w = words[wi];
-    if (!del && ci === w.length) { setTimeout(() => setDel(true), pause); return; }
-    if (del && ci === 0) { setDel(false); setWi((i) => (i + 1) % words.length); return; }
-    const t = setTimeout(() => { setText(w.substring(0, del ? ci - 1 : ci + 1)); setCi((c) => c + (del ? -1 : 1)); }, del ? speed / 2.5 : speed);
+    if (!del && ci === w.length) { const t = setTimeout(() => setDel(true), pause); return () => clearTimeout(t); }
+    if (del && ci === 0) { setDel(false); setWi(i => (i + 1) % words.length); return; }
+    const t = setTimeout(() => {
+      setText(w.substring(0, del ? ci - 1 : ci + 1));
+      setCi(c => c + (del ? -1 : 1));
+    }, del ? speed / 2.5 : speed);
     return () => clearTimeout(t);
   }, [ci, del, wi, words, speed, pause]);
-  return <span>{text}<span style={{ borderRight: "2px solid currentColor", marginLeft: 2, animation: "blink 1s step-end infinite" }}>&thinsp;</span></span>;
+  return <span>{text}<span style={{ display: "inline-block", width: 2, height: "1.1em", background: "var(--accent)", marginLeft: 3, verticalAlign: "text-bottom", animation: "blink 1s step-end infinite" }} /></span>;
 }
 
-function Starfield({ dark }) {
+/* ─── Counter ────────────────────────────────────────────────────────────── */
+function Counter({ target, suffix = "" }) {
   const ref = useRef(null);
+  const v = useOnScreen(ref);
+  const [n, setN] = useState(0);
   useEffect(() => {
-    const c = ref.current; if (!c) return;
-    const ctx = c.getContext("2d"); let id;
-    let w, h; const stars = []; const N = 180; const shooting = [];
-    function resize() { w = c.width = c.offsetWidth; h = c.height = c.offsetHeight; }
-    resize(); window.addEventListener("resize", resize);
-    for (let i = 0; i < N; i++) stars.push({ x: Math.random() * w, y: Math.random() * h, r: Math.random() * 2 + 0.3, b: Math.random() * 0.5 + 0.5, ts: Math.random() * 0.02 + 0.005, tp: Math.random() * Math.PI * 2 });
-    let frame = 0;
-    function draw() {
-      ctx.clearRect(0, 0, w, h); frame++;
-      stars.forEach(s => {
-        const tw = 0.4 + 0.6 * Math.abs(Math.sin(frame * s.ts + s.tp));
-        const a = s.b * tw;
-        ctx.fillStyle = dark ? `rgba(200,220,255,${a})` : `rgba(50,80,160,${a * 0.3})`;
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
-        if (s.r > 1.2 && dark) {
-          ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 3, 0, Math.PI * 2);
-          const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 3);
-          g.addColorStop(0, `rgba(140,180,255,${a * 0.25})`); g.addColorStop(1, "transparent");
-          ctx.fillStyle = g; ctx.fill();
-        }
-      });
-      if (Math.random() < 0.003 && shooting.length < 2) shooting.push({ x: Math.random() * w, y: Math.random() * h * 0.3, vx: 4 + Math.random() * 4, vy: 2 + Math.random() * 2, life: 60, ml: 60 });
-      for (let i = shooting.length - 1; i >= 0; i--) {
-        const ss = shooting[i]; ss.x += ss.vx; ss.y += ss.vy; ss.life--;
-        const a = ss.life / ss.ml;
-        ctx.beginPath(); ctx.moveTo(ss.x, ss.y); ctx.lineTo(ss.x - ss.vx * 8, ss.y - ss.vy * 8);
-        const gr = ctx.createLinearGradient(ss.x, ss.y, ss.x - ss.vx * 8, ss.y - ss.vy * 8);
-        gr.addColorStop(0, `rgba(200,230,255,${a * 0.8})`); gr.addColorStop(1, "transparent");
-        ctx.strokeStyle = gr; ctx.lineWidth = 1.5; ctx.stroke();
-        if (ss.life <= 0) shooting.splice(i, 1);
-      }
-      if (dark) { for (let i = 0; i < stars.length; i++) { for (let j = i + 1; j < stars.length; j++) { if (stars[i].r < 1 || stars[j].r < 1) continue; const dx = stars[i].x - stars[j].x, dy = stars[i].y - stars[j].y, d = Math.sqrt(dx * dx + dy * dy); if (d < 80) { ctx.beginPath(); ctx.moveTo(stars[i].x, stars[i].y); ctx.lineTo(stars[j].x, stars[j].y); ctx.strokeStyle = `rgba(140,180,255,${0.04 * (1 - d / 80)})`; ctx.lineWidth = 0.4; ctx.stroke(); } } } }
-      id = requestAnimationFrame(draw);
-    }
-    draw();
-    return () => { cancelAnimationFrame(id); window.removeEventListener("resize", resize); };
-  }, [dark]);
-  return <canvas ref={ref} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />;
+    if (!v) return;
+    const dur = 1400, steps = 50, step = dur / steps;
+    let cur = 0;
+    const id = setInterval(() => {
+      cur++;
+      setN(Math.round(target * (cur / steps)));
+      if (cur >= steps) clearInterval(id);
+    }, step);
+    return () => clearInterval(id);
+  }, [v, target]);
+  return <span ref={ref}>{n}{suffix}</span>;
 }
 
-function MouseGlow({ mouse, dark }) {
-  if (!dark) return null;
-  return <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 1, background: `radial-gradient(600px circle at ${mouse.x}px ${mouse.y}px, rgba(6,182,212,0.06), transparent 50%)`, transition: "background 0.15s ease" }} />;
-}
-
-function MagButton({ children, href, style: s, ...props }) {
-  const ref = useRef(null);
-  const [off, setOff] = useState({ x: 0, y: 0 });
-  const Tag = href ? "a" : "button";
+/* ─── ScrollProgress ─────────────────────────────────────────────────────── */
+function ScrollProgress() {
+  const [pct, setPct] = useState(0);
+  useEffect(() => {
+    const h = () => {
+      const el = document.documentElement;
+      setPct((window.scrollY / (el.scrollHeight - el.clientHeight)) * 100);
+    };
+    window.addEventListener("scroll", h, { passive: true });
+    return () => window.removeEventListener("scroll", h);
+  }, []);
   return (
-    <Tag ref={ref} href={href} {...props}
-      onMouseMove={e => { const r = ref.current.getBoundingClientRect(); setOff({ x: (e.clientX - r.left - r.width / 2) * 0.15, y: (e.clientY - r.top - r.height / 2) * 0.15 }); }}
-      onMouseLeave={() => setOff({ x: 0, y: 0 })}
-      style={{ ...s, transform: `translate(${off.x}px, ${off.y}px)`, transition: "transform 0.3s cubic-bezier(.16,1,.3,1), box-shadow 0.3s, background 0.3s" }}>
-      {children}
-    </Tag>
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: 3, zIndex: 1000, background: "transparent" }}>
+      <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg, var(--accent), var(--accent2))", transition: "width 0.1s linear", boxShadow: "0 0 10px var(--accent)" }} />
+    </div>
   );
 }
 
-function SkillTag({ label, dark, A, text }) {
-  const [h, setH] = useState(false);
-  return <span onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)} style={{ fontSize: 11, fontWeight: 500, padding: "6px 14px", borderRadius: 100, background: h ? A + "18" : (dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"), border: `1px solid ${h ? A + "35" : (dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)")}`, color: h ? A : text, transition: "all 0.3s cubic-bezier(.16,1,.3,1)", cursor: "default", transform: h ? "translateY(-2px)" : "none", display: "inline-block" }}>{label}</span>;
+/* ─── BentoCard ──────────────────────────────────────────────────────────── */
+function BentoCard({ tag, tagColor = "var(--accent)", title, desc, caseRows, tech, actions, accent, style: s = {}, children }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background: hov ? "var(--card-hover)" : "var(--card)",
+        border: `1px solid ${hov ? (accent || "var(--accent)") + "40" : "var(--border)"}`,
+        borderRadius: 18,
+        padding: "32px 30px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 18,
+        transform: hov ? "translateY(-4px)" : "none",
+        boxShadow: hov ? `0 20px 50px ${(accent || "var(--accent)")}10` : "none",
+        transition: "all 0.38s cubic-bezier(.16,1,.3,1)",
+        ...s
+      }}
+    >
+      <div>
+        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2, textTransform: "uppercase", color: tagColor, border: `1px solid ${tagColor}30`, padding: "4px 10px", borderRadius: 100, display: "inline-block", marginBottom: 14 }}>{tag}</span>
+        <h3 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.2, color: "var(--text)" }}>{title}</h3>
+      </div>
+      {desc && <p style={{ fontSize: 13.5, lineHeight: 1.85, color: "var(--text-dim)", margin: 0 }}>{desc}</p>}
+      {caseRows && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, background: "var(--case-bg)", borderRadius: 12, padding: "16px 18px", border: "1px solid var(--border)" }}>
+          {caseRows.map(([label, text]) => (
+            <div key={label} style={{ display: "flex", gap: 10, fontSize: 12.5, lineHeight: 1.7 }}>
+              <span style={{ fontWeight: 700, color: "var(--accent)", flexShrink: 0, minWidth: 58 }}>{label}</span>
+              <span style={{ color: "var(--text-dim)" }}>{text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {children}
+      {tech && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {tech.map(t => <span key={t} style={{ fontSize: 11, fontWeight: 600, padding: "5px 12px", borderRadius: 100, background: "var(--tag-bg)", color: "var(--text-dim)", border: "1px solid var(--border)" }}>{t}</span>)}
+        </div>
+      )}
+      {actions}
+    </div>
+  );
 }
 
+/* ─── TimelineItem ───────────────────────────────────────────────────────── */
+function TimelineItem({ period, badge, role, org, bullets, techTags, delay = 0, isLast = false }) {
+  const ref = useRef(null);
+  const v = useOnScreen(ref);
+  return (
+    <div ref={ref} style={{ display: "flex", gap: 24, opacity: v ? 1 : 0, transform: v ? "none" : "translateX(-28px)", transition: `all 0.85s cubic-bezier(.16,1,.3,1) ${delay}s` }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 20 }}>
+        <div style={{ width: 14, height: 14, borderRadius: "50%", background: "linear-gradient(135deg, var(--accent), var(--accent2))", border: "3px solid var(--bg)", boxShadow: "0 0 0 2px var(--accent)", flexShrink: 0, marginTop: 4 }} />
+        {!isLast && <div style={{ flex: 1, width: 2, background: "linear-gradient(to bottom, var(--accent)40, transparent)", marginTop: 6 }} />}
+      </div>
+      <div style={{ paddingBottom: isLast ? 0 : 48 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: 1.2, textTransform: "uppercase" }}>{period}</span>
+          {badge && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", padding: "3px 10px", borderRadius: 100, background: "rgba(52,211,153,0.1)", color: "#34D399", border: "1px solid rgba(52,211,153,0.2)" }}>{badge}</span>}
+        </div>
+        <h3 style={{ fontSize: 19, fontWeight: 800, marginBottom: 4, letterSpacing: -0.4 }}>{role}</h3>
+        <div style={{ fontSize: 13, color: "var(--text-dim)", fontWeight: 500, marginBottom: 16 }}>{org}</div>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          {bullets.map((b, i) => (
+            <li key={i} style={{ display: "flex", gap: 10, fontSize: 13.5, lineHeight: 1.8, color: "var(--text-dim)" }}>
+              <span style={{ color: "var(--accent)", flexShrink: 0, marginTop: 7, fontSize: 5 }}>●</span>
+              <span dangerouslySetInnerHTML={{ __html: b }} />
+            </li>
+          ))}
+        </ul>
+        {techTags && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>
+            {techTags.map(t => <span key={t} style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 10px", borderRadius: 100, background: "var(--tag-bg)", color: "var(--text-dim)", border: "1px solid var(--border)" }}>{t}</span>)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── SkillGroup ─────────────────────────────────────────────────────────── */
+function SkillGroup({ icon, title, tags, delay = 0 }) {
+  return (
+    <Reveal delay={delay}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 26, transition: "all 0.35s cubic-bezier(.16,1,.3,1)" }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)25"; e.currentTarget.style.boxShadow = "0 8px 32px var(--accent)06"; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "none"; }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+          <span style={{ fontSize: 22 }}>{icon}</span>
+          <h3 style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.3 }}>{title}</h3>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          {tags.map(t => {
+            const [hov, setHov] = useState(false);
+            return (
+              <span key={t} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
+                fontSize: 11, fontWeight: 500, padding: "6px 13px", borderRadius: 100,
+                background: hov ? "rgba(6,182,212,0.1)" : "var(--tag-bg)",
+                border: `1px solid ${hov ? "rgba(6,182,212,0.3)" : "var(--border)"}`,
+                color: hov ? "var(--accent)" : "var(--text-dim)",
+                transition: "all 0.25s cubic-bezier(.16,1,.3,1)",
+                transform: hov ? "translateY(-2px)" : "none",
+                cursor: "default", display: "inline-block"
+              }}>{t}</span>
+            );
+          })}
+        </div>
+      </div>
+    </Reveal>
+  );
+}
+
+/* ─── Main Portfolio ─────────────────────────────────────────────────────── */
 export default function Portfolio() {
-  const [dark, setDark] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [filter, setFilter] = useState("All");
-  const [scrollY, setScrollY] = useState(0);
-  const [form, setForm] = useState({ name: "", email: "", message: "" });
-  const [formMsg, setFormMsg] = useState("");
-  const [isMob, setIsMob] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const scrollY = useScrollY();
+  const isMob = useIsMob();
   const [loaded, setLoaded] = useState(false);
-  const mouse = useMouse();
 
-  useEffect(() => { setLoaded(true); const onS = () => setScrollY(window.scrollY); const onR = () => setIsMob(window.innerWidth < 768); onR(); onS(); window.addEventListener("scroll", onS, { passive: true }); window.addEventListener("resize", onR); return () => { window.removeEventListener("scroll", onS); window.removeEventListener("resize", onR); }; }, []);
+  useEffect(() => { setLoaded(true); }, []);
 
-  const A = dark ? "#06B6D4" : "#0891B2", A2 = dark ? "#818CF8" : "#6366F1";
-  const bg = dark ? "#0C0E14" : "#FAFAFA", bg2 = dark ? "#10131A" : "#FFFFFF";
-  const text = dark ? "#E8ECF4" : "#09090B", textDim = dark ? "rgba(232,236,244,0.5)" : "rgba(9,9,11,0.45)";
-  const border = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.07)";
-  const cardBg = dark ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.9)";
-  const pad = isMob ? "72px 20px" : "110px 64px";
+  const copyEmail = () => {
+    navigator.clipboard.writeText("nikhilpatil1104@gmail.com");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-  const projects = [
-    { title: "Insurance AI Research Agent", tag: "AI AGENT", tagColor: "#06B6D4", icon: "\u{1F916}", category: "AI", description: "Custom four-step agentic AI loop built from scratch \u2014 no external frameworks. Intent classification \u2192 search decision \u2192 DuckDuckGo retrieval \u2192 LLM synthesis. Handles complex multi-turn insurance research queries.", tech: ["OpenAI API", "Streamlit", "DuckDuckGo API", "Python", "Agentic AI"], highlights: ["Custom Agentic Loop", "No Frameworks", "Real-time Retrieval"], github: "https://github.com/nikhilpatil1104/AI-Agent-For-Insurance-Research" },
-    { title: "RAG Insurance Policy Q&A \u2014 PlymBot", tag: "AI / RAG", tagColor: "#818CF8", icon: "\u{1F4C4}", category: "AI", description: "AI-powered RAG application for querying insurance policy documents. FAISS vector embeddings for semantic search, GPT-4o-mini for answer synthesis, production-grade guardrails. Deployed to Streamlit Community Cloud.", tech: ["LangChain", "FAISS", "GPT-4o-mini", "Streamlit", "RAG", "Vector DB"], highlights: ["Deployed to Cloud", "Guardrails Built-in", "Semantic Search"], github: "https://github.com/nikhilpatil1104/Insurance-Policy-Bot" },
-    { title: "Glaucoma Detection Model", tag: "DEEP LEARNING", tagColor: "#F472B6", icon: "\u{1F9E0}", category: "AI", description: "End-to-end CNN glaucoma detection from retinal fundus images \u2014 94% accuracy. VGG16 transfer learning, custom augmentation pipeline increasing dataset diversity 3\u00D7, reducing overfitting 25%.", tech: ["PyTorch", "VGG16", "CNN", "Transfer Learning", "ROC-AUC", "Git"], highlights: ["94% Accuracy", "+15% Sensitivity", "3\u00D7 Dataset Diversity"], github: "https://github.com/nikhilpatil1104/Detection-of-Glaucoma-Disease-using-Image-Processing-SoftComputing-DeepLearningApproaches-" },
-    { title: "Climate Impact Prediction", tag: "AI / ML", tagColor: "#34D399", icon: "\u{1F30D}", category: "ML", description: "Multivariate OLS and Poisson regression models forecasting rainfall, sea-level rise, extreme weather through 2050. R\u00B2 = 0.85 with multi-decade environmental features. Reusable ML pipelines.", tech: ["Python", "Scikit-learn", "OLS Regression", "Poisson GLM", "Pandas"], highlights: ["R\u00B2 = 0.85", "+20% Accuracy", "Reusable Pipelines"], github: "https://github.com/nikhilpatil1104/Climate-Impact-Prediction" },
-    { title: "E-Commerce Price Intelligence", tag: "FULL STACK", tagColor: "#FBBF24", icon: "\u{1F6D2}", category: "Web", description: "Automated web scraping aggregating real-time pricing across 10+ platforms, processing 100K+ records. Optimized MySQL schema cutting query time 40%. Price tracking algorithms reducing search time 50%.", tech: ["Selenium", "BeautifulSoup", "MySQL", "React", "ETL"], highlights: ["100K+ Products", "40% Faster Queries", "50% Time Saved"], github: "https://github.com/nikhilpatil1104/Price-Comparison-Website" },
+  /* ── Data ── */
+  const navLinks = [
+    { label: "About", href: "#about" },
+    { label: "Skills", href: "#skills" },
+    { label: "Projects", href: "#projects" },
+    { label: "Experience", href: "#experience" },
+    { label: "Education", href: "#education" },
+    { label: "Contact", href: "#contact" },
   ];
-  const filtered = filter === "All" ? projects : projects.filter(p => p.category === filter);
+
+  const stats = [
+    { target: 380, suffix: "", label: "GPA", sub: "UMBC M.S. Program", display: "3.80" },
+    { target: 94, suffix: "%", label: "Model Accuracy", sub: "Glaucoma Detection CNN" },
+    { target: 50, suffix: "K+", label: "Records Managed", sub: "ETL Pipelines" },
+    { target: 40, suffix: "%", label: "Efficiency Gain", sub: "Reporting Automation" },
+  ];
 
   const skillGroups = [
-    { title: "AI & Machine Learning", icon: "\u{1F916}", tags: ["Agentic AI", "RAG Systems", "LLM APIs (OpenAI, GPT-4)", "LangChain", "Prompt Engineering", "Transfer Learning", "CNNs", "PyTorch", "Scikit-learn", "AutoML"] },
-    { title: "Statistical Modeling", icon: "\u{1F4CA}", tags: ["Bayesian Statistics", "Econometrics", "Predictive Modeling", "OLS / Poisson / Multivariate Regression", "Hypothesis & A/B Testing", "EDA", "Pure Premium Modeling"] },
-    { title: "Data Engineering & Tools", icon: "\u2699\uFE0F", tags: ["Python", "SQL", "MongoDB (NoSQL)", "Pandas", "NumPy", "ETL Pipelines", "Git", "AWS (basic)", "R (basic)", "FAISS / Vector DBs"] },
-    { title: "BI & Visualization", icon: "\u{1F4C8}", tags: ["Power BI", "Tableau", "Interactive Dashboards", "Business Intelligence", "Streamlit Deployment"] },
-    { title: "Domain Expertise", icon: "\u{1F3E2}", tags: ["Insurance Analytics", "Customer Lifetime Value", "Pricing Strategy", "Risk Assessment", "Loss Trend Forecasting", "Underwriting Analytics"] },
+    { icon: "🤖", title: "AI & LLM Stack", tags: ["Agentic AI", "RAG Systems", "LLM APIs (OpenAI, GPT-4)", "LangChain", "Prompt Engineering", "Fine-tuning", "FAISS / Vector DBs", "Ollama"] },
+    { icon: "🧠", title: "Core ML / Deep Learning", tags: ["PyTorch", "Scikit-learn", "CNNs", "Transfer Learning (VGG16)", "AutoML", "Anomaly Detection", "Time Series", "Transformers"] },
+    { icon: "📊", title: "Statistical Modeling", tags: ["Bayesian Statistics", "Econometrics", "OLS Regression", "Poisson GLM", "Multivariate Analysis", "Hypothesis Testing", "A/B Testing", "EDA"] },
+    { icon: "⚙️", title: "Data Engineering", tags: ["Python", "SQL", "Pandas", "NumPy", "MongoDB (NoSQL)", "MySQL", "ETL Pipelines", "Spark", "Git"] },
+    { icon: "📈", title: "BI & Visualization", tags: ["Power BI", "Tableau", "Plotly / Dash", "Streamlit", "Interactive Dashboards", "Business Intelligence"] },
+    { icon: "🏢", title: "Domain Expertise", tags: ["Insurance Analytics", "CLV Modeling", "Pure Premium Modeling", "Risk Assessment", "Underwriting Analytics", "Loss Trend Forecasting"] },
+  ];
+
+  const bentoProjects = [
+    {
+      id: "ins-agent",
+      tag: "AGENTIC AI",
+      tagColor: "#06B6D4",
+      title: "Insurance AI Research Agent",
+      desc: "Custom four-step agentic loop built from scratch — no external frameworks. Intent classification → search decision → DuckDuckGo retrieval → LLM synthesis. Handles complex multi-turn insurance research queries.",
+      caseRows: [
+        ["Problem", "Manual insurance research is slow, inconsistent, and unscalable across complex multi-turn queries."],
+        ["Approach", "Custom 4-step agent loop: intent classification → search decision → DuckDuckGo retrieval → GPT-4 synthesis."],
+        ["Outcome", "Fully autonomous research pipeline with real-time retrieval, zero framework dependency."],
+      ],
+      pipeline: ["Intent Classification", "Search Decision", "DuckDuckGo Retrieval", "GPT-4 Synthesis"],
+      tech: ["OpenAI API", "DuckDuckGo API", "Streamlit", "Python", "Agentic AI"],
+      github: "https://github.com/nikhilpatil1104/AI-Agent-For-Insurance-Research",
+      size: "large",
+      accent: "#06B6D4",
+    },
+    {
+      id: "rag-plymbot",
+      tag: "RAG SYSTEM · DEPLOYED",
+      tagColor: "#818CF8",
+      title: "PlymBot — RAG Policy Q&A",
+      desc: "AI-powered RAG application for querying insurance policy documents. FAISS vector embeddings for semantic search, GPT-4o-mini for answer synthesis, production-grade guardrails. Deployed to Streamlit Cloud.",
+      caseRows: [
+        ["Problem", "Insurance policy documents are dense, unstructured, and slow to navigate manually."],
+        ["Approach", "LangChain + FAISS embeddings → GPT-4o-mini synthesis → built-in guardrails + fallback handling."],
+        ["Outcome", "Deployed cloud app with semantic search, 100% auditability, and reliable guardrails."],
+      ],
+      tech: ["LangChain", "FAISS", "GPT-4o-mini", "Streamlit", "RAG", "Vector DB"],
+      github: "https://github.com/nikhilpatil1104/Insurance-Policy-Bot",
+      size: "medium",
+      accent: "#818CF8",
+    },
+    {
+      id: "glaucoma",
+      tag: "DEEP LEARNING · 94% ACC",
+      tagColor: "#F472B6",
+      title: "Glaucoma Detection CNN",
+      desc: "End-to-end CNN glaucoma detection from retinal fundus images. VGG16 transfer learning, custom augmentation pipeline increasing dataset diversity 3×, reducing overfitting 25%.",
+      caseRows: [
+        ["Problem", "Glaucoma affects 80M+ globally — early detection from fundus images requires expert-level accuracy."],
+        ["Approach", "VGG16 transfer learning + custom augmentation (3× dataset diversity) + dropout regularization."],
+        ["Outcome", "94% accuracy, +15% sensitivity over baseline. ROC-AUC validated."],
+      ],
+      tech: ["PyTorch", "VGG16", "CNN", "Transfer Learning", "ROC-AUC"],
+      github: "https://github.com/nikhilpatil1104/Detection-of-Glaucoma-Disease-using-Image-Processing-SoftComputing-DeepLearningApproaches-",
+      size: "medium",
+      accent: "#F472B6",
+    },
+    {
+      id: "climate",
+      tag: "PREDICTIVE MODELING",
+      tagColor: "#34D399",
+      title: "Climate Impact Prediction",
+      desc: "Multivariate OLS and Poisson regression forecasting rainfall, sea-level rise, extreme weather through 2050. R² = 0.85 with multi-decade environmental features.",
+      caseRows: [
+        ["Problem", "Climate forecasting to 2050 requires robust statistical models across multi-decade, multi-variable data."],
+        ["Approach", "Multivariate OLS + Poisson GLM regression with curated environmental feature engineering."],
+        ["Outcome", "R² = 0.85, +20% accuracy over baseline. Reusable modular pipelines."],
+      ],
+      tech: ["Python", "Scikit-learn", "OLS Regression", "Poisson GLM", "Pandas"],
+      github: "https://github.com/nikhilpatil1104/Climate-Impact-Prediction",
+      size: "small",
+      accent: "#34D399",
+    },
+    {
+      id: "price",
+      tag: "FULL STACK · DATA",
+      tagColor: "#FBBF24",
+      title: "E-Commerce Price Intelligence",
+      desc: "Automated scraping aggregating real-time pricing across 10+ platforms, processing 100K+ product records. Optimized MySQL schema cutting query time 40%. Price tracking reducing search time 50%.",
+      caseRows: [
+        ["Problem", "Manual price comparison across 10+ e-commerce platforms is time-consuming and error-prone."],
+        ["Approach", "Selenium + BeautifulSoup scraping → ETL to optimized MySQL → React price tracking dashboard."],
+        ["Outcome", "100K+ products, 40% faster queries, 50% search time reduction."],
+      ],
+      tech: ["Selenium", "BeautifulSoup", "MySQL", "React", "ETL"],
+      github: "https://github.com/nikhilpatil1104/Price-Comparison-Website",
+      size: "wide",
+      accent: "#FBBF24",
+    },
   ];
 
   const experiences = [
-    { date: "May 2025 \u2013 Jul 2025", role: "Data Analyst", company: "Buildstone Realty Advisors", bullets: ["Spearheaded Power BI dashboards visualizing CLV and risk metrics, reducing reporting time by 40%.", "Engineered resilient ETL pipelines for insurance analytics, slashing manual handling time by 60%.", "Applied econometrics and Bayesian techniques with scikit-learn for CLV and pure premium modeling, improving decision efficiency by 35%.", "Translated complex predictive modeling concepts into actionable insights for stakeholders."] },
-    { date: "Sep 2024 \u2013 Apr 2025", role: "Data Management Intern", company: "Buildstone Realty Advisors", bullets: ["Managed 50,000+ property records in MySQL and MongoDB with 99% data accuracy.", "Architected scalable ETL processes using Python and Git, enabling 40% faster insight delivery.", "Developed automated data cleaning and validation scripts, improving processing speed by 70%."] },
+    {
+      period: "May 2025 — Jul 2025",
+      badge: "Recent",
+      role: "Data Analyst",
+      org: "Buildstone Realty Advisors",
+      bullets: [
+        "Spearheaded <strong style=\"color:var(--text)\">Power BI dashboards</strong> visualizing CLV and risk metrics, reducing reporting time by <strong style=\"color:var(--accent)\">40%</strong>.",
+        "Engineered resilient <strong style=\"color:var(--text)\">ETL pipelines</strong> for insurance analytics, slashing manual handling time by <strong style=\"color:var(--accent)\">60%</strong>.",
+        "Applied <strong style=\"color:var(--text)\">econometrics and Bayesian techniques</strong> with scikit-learn for CLV and pure premium modeling, improving decision efficiency by <strong style=\"color:var(--accent)\">35%</strong>.",
+        "Translated complex predictive modeling results into actionable business insights for non-technical stakeholders.",
+      ],
+      techTags: ["Power BI", "scikit-learn", "Bayesian Analysis", "ETL", "CLV Modeling"],
+    },
+    {
+      period: "Sep 2024 — Apr 2025",
+      role: "Data Management Intern",
+      org: "Buildstone Realty Advisors",
+      bullets: [
+        "Managed <strong style=\"color:var(--text)\">50,000+ property records</strong> in MySQL and MongoDB with 99% data accuracy.",
+        "Architected scalable <strong style=\"color:var(--text)\">ETL processes</strong> using Python and Git, enabling <strong style=\"color:var(--accent)\">40% faster</strong> insight delivery.",
+        "Developed automated data cleaning and validation scripts, improving processing speed by <strong style=\"color:var(--accent)\">70%</strong>.",
+      ],
+      techTags: ["MySQL", "MongoDB", "Python", "Git", "ETL"],
+    },
   ];
 
-  const certs = [
-    { name: "Generative AI Essentials: Using LLMs to Work with Data", org: "IBM SkillsBuild", icon: "\u{1F9EC}" },
-    { name: "Enterprise Data Science in Practice", org: "IBM SkillsBuild", icon: "\u{1F4E1}" },
-    { name: "Python For Beginners", org: "Udemy", icon: "\u{1F40D}" },
-    { name: "Automated Machine Learning For Beginners", org: "Udemy", icon: "\u26A1" },
-  ];
+  const filtered = filter === "All" ? bentoProjects : bentoProjects.filter(p => {
+    if (filter === "AI") return ["ins-agent", "rag-plymbot", "glaucoma"].includes(p.id);
+    if (filter === "ML") return ["climate"].includes(p.id);
+    if (filter === "Data") return ["price"].includes(p.id);
+    return true;
+  });
 
-  const navLinks = ["About", "Skills", "Experience", "Projects", "Education", "Contact"];
-  const handleSubmit = () => { if (!form.name || !form.email || !form.message) { setFormMsg("Please fill in all fields."); return; } window.open(`mailto:nikhilpatil1104@gmail.com?subject=Portfolio Contact from ${form.name}&body=${encodeURIComponent(form.message + "\n\nFrom: " + form.name + "\nEmail: " + form.email)}`); setFormMsg("Opening your email client..."); setForm({ name: "", email: "", message: "" }); };
-
+  /* ── Render ── */
   return (
-    <div style={{ fontFamily: "'Outfit', sans-serif", color: text, background: bg, minHeight: "100vh", overflowX: "hidden", transition: "background 0.5s, color 0.5s" }}>
+    <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
-        @keyframes blink { 50% { opacity: 0 } }
-        @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }
-        @keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
-        @keyframes gradientMove { 0% { background-position: 0% 50% } 50% { background-position: 100% 50% } 100% { background-position: 0% 50% } }
-        * { margin: 0; padding: 0; box-sizing: border-box; scrollbar-width: none !important; -ms-overflow-style: none !important; }
-        *::-webkit-scrollbar { display: none !important; }
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+          --bg: #080B12;
+          --bg2: #0C0F18;
+          --card: rgba(255,255,255,0.026);
+          --card-hover: rgba(255,255,255,0.042);
+          --case-bg: rgba(255,255,255,0.018);
+          --border: rgba(255,255,255,0.065);
+          --text: #E4E8F2;
+          --text-dim: rgba(228,232,242,0.48);
+          --accent: #06B6D4;
+          --accent2: #818CF8;
+          --tag-bg: rgba(255,255,255,0.038);
+          --mono: 'JetBrains Mono', monospace;
+          --sans: 'DM Sans', sans-serif;
+          --display: 'Syne', sans-serif;
+        }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         html { scroll-behavior: smooth; }
-        body { overflow-x: hidden; }
-        a { color: inherit; }
-        ::selection { background: ${A}44; color: #fff; }
-        input, textarea { font-family: 'Outfit', sans-serif; }
+        body { background: var(--bg); color: var(--text); font-family: var(--sans); overflow-x: hidden; }
+        body::-webkit-scrollbar { display: none; }
+        body { scrollbar-width: none; }
+        ::selection { background: rgba(6,182,212,0.25); color: #fff; }
+
+        a { color: inherit; text-decoration: none; }
+        strong { color: var(--text); }
+
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulse { 0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(52,211,153,0.5); } 50% { opacity:0.8; box-shadow:0 0 0 6px rgba(52,211,153,0); } }
+        @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-7px); } }
+        @keyframes gridFade { from { opacity:0; } to { opacity:1; } }
+        @keyframes gradPan { 0%,100% { background-position:0% 50%; } 50% { background-position:100% 50%; } }
+        @keyframes spinSlow { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+
+        .hero-grid {
+          position:absolute; inset:0;
+          background-image: linear-gradient(rgba(6,182,212,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(6,182,212,0.04) 1px, transparent 1px);
+          background-size: 60px 60px;
+          animation: gridFade 1.5s ease both;
+          mask-image: radial-gradient(ellipse 90% 80% at 50% 40%, black 40%, transparent 100%);
+        }
+        .hero-glow {
+          position:absolute; top:-20%; right:-10%; width:700px; height:700px;
+          background:radial-gradient(circle, rgba(6,182,212,0.09) 0%, transparent 65%);
+          filter:blur(60px); pointer-events:none;
+        }
+        .hero-glow2 {
+          position:absolute; bottom:-15%; left:-10%; width:500px; height:500px;
+          background:radial-gradient(circle, rgba(129,140,248,0.06) 0%, transparent 65%);
+          filter:blur(80px); pointer-events:none;
+        }
+
+        .gradient-text {
+          background: linear-gradient(135deg, var(--accent), var(--accent2), #F472B6);
+          background-size: 200% auto;
+          animation: gradPan 5s ease infinite;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .section-tag {
+          font-family: var(--mono);
+          font-size: 11px;
+          font-weight: 500;
+          color: var(--accent);
+          letter-spacing: 0.1em;
+          display: block;
+          margin-bottom: 14px;
+        }
+
+        .pipeline-row {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          margin-top: 4px;
+        }
+        .pipeline-step {
+          font-family: var(--mono);
+          font-size: 10.5px;
+          padding: 5px 12px;
+          background: rgba(6,182,212,0.06);
+          border: 1px solid rgba(6,182,212,0.2);
+          border-radius: 6px;
+          color: var(--accent);
+          white-space: nowrap;
+        }
+        .pipeline-arrow {
+          color: var(--text-dim);
+          font-size: 12px;
+        }
+
+        .bento-btn {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 9px 18px; border-radius: 10px;
+          background: rgba(6,182,212,0.08);
+          border: 1px solid rgba(6,182,212,0.25);
+          color: var(--accent); font-size: 12px; font-weight: 600;
+          font-family: var(--sans);
+          cursor: pointer; text-decoration: none;
+          transition: all 0.25s cubic-bezier(.16,1,.3,1);
+        }
+        .bento-btn:hover { background: rgba(6,182,212,0.14); transform: translateY(-2px); }
+        .bento-private {
+          display: inline-flex; align-items: center; gap: 6px;
+          font-size: 11px; font-weight: 600;
+          color: var(--text-dim);
+          padding: 8px 14px; border-radius: 8px;
+          background: var(--tag-bg); border: 1px solid var(--border);
+        }
+
+        .nav-link {
+          font-size: 13px; font-weight: 500; letter-spacing: 0.02em;
+          color: var(--text-dim);
+          padding: 6px 2px;
+          position: relative;
+          transition: color 0.25s;
+        }
+        .nav-link::after {
+          content:''; position:absolute; bottom:-2px; left:0; right:0;
+          height:1px; background:var(--accent);
+          transform:scaleX(0); transition:transform 0.25s cubic-bezier(.16,1,.3,1);
+        }
+        .nav-link:hover { color: var(--text); }
+        .nav-link:hover::after { transform:scaleX(1); }
+
+        .filter-btn {
+          padding: 8px 20px; border-radius: 100px;
+          font-size: 12px; font-weight: 600;
+          font-family: var(--sans);
+          cursor: pointer;
+          transition: all 0.28s cubic-bezier(.16,1,.3,1);
+          border: 1px solid var(--border);
+          background: transparent; color: var(--text-dim);
+        }
+        .filter-btn.active {
+          background: linear-gradient(135deg, var(--accent), var(--accent2));
+          border-color: transparent; color: #fff;
+          box-shadow: 0 4px 18px rgba(6,182,212,0.25);
+          transform: scale(1.04);
+        }
+        .filter-btn:hover:not(.active) { color: var(--text); border-color: var(--accent)40; }
+
+        .contact-cta {
+          display: inline-flex; align-items: center; gap: 10px;
+          padding: 14px 28px; border-radius: 12px;
+          background: var(--card); border: 1px solid var(--border);
+          color: var(--text); font-size: 14px; font-weight: 600;
+          font-family: var(--sans); cursor: pointer;
+          transition: all 0.3s cubic-bezier(.16,1,.3,1);
+          letter-spacing: -0.2px;
+        }
+        .contact-cta:hover { border-color: var(--accent)50; background: var(--card-hover); transform: translateY(-2px); }
+
+        .contact-send {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 50px; height: 50px; border-radius: 12px;
+          background: linear-gradient(135deg, var(--accent), var(--accent2));
+          box-shadow: 0 4px 20px rgba(6,182,212,0.3);
+          transition: all 0.3s; flex-shrink: 0;
+        }
+        .contact-send:hover { transform: translateY(-3px) rotate(5deg); box-shadow: 0 8px 32px rgba(6,182,212,0.4); }
+
+        .social-link {
+          display: inline-flex; align-items: center; gap: 8px;
+          font-size: 13px; font-weight: 500;
+          color: var(--text-dim);
+          padding: 8px 14px; border-radius: 8px;
+          border: 1px solid var(--border);
+          transition: all 0.25s cubic-bezier(.16,1,.3,1);
+        }
+        .social-link:hover { color: var(--accent); border-color: var(--accent)40; background: rgba(6,182,212,0.04); transform: translateY(-2px); }
+
+        @media (max-width: 768px) {
+          .hero-title { font-size: 46px !important; letter-spacing: -2px !important; }
+          .bento-grid { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
-      <MouseGlow mouse={mouse} dark={dark} />
+      <ScrollProgress />
 
-      {/* NAV */}
-      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 200, background: scrollY > 60 ? (dark ? "rgba(12,14,20,0.75)" : "rgba(250,250,250,0.75)") : "transparent", backdropFilter: scrollY > 60 ? "blur(20px) saturate(1.8)" : "none", borderBottom: scrollY > 60 ? `1px solid ${border}` : "none", transition: "all 0.4s", padding: isMob ? "14px 20px" : "18px 48px" }}>
+      {/* ── NAV ── */}
+      <nav style={{
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 500,
+        background: scrollY > 60 ? "rgba(8,11,18,0.82)" : "transparent",
+        backdropFilter: scrollY > 60 ? "blur(22px) saturate(1.8)" : "none",
+        borderBottom: scrollY > 60 ? "1px solid var(--border)" : "none",
+        transition: "all 0.4s cubic-bezier(.16,1,.3,1)",
+        padding: isMob ? "14px 20px" : "18px 56px",
+      }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <a href="#" style={{ textDecoration: "none", fontSize: 21, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: A }}>nikhil</span><span style={{ opacity: 0.35 }}>patil</span></a>
-          {!isMob && <div style={{ display: "flex", gap: 30, alignItems: "center" }}>
-            {navLinks.map(l => <a key={l} href={`#${l.toLowerCase()}`} style={{ textDecoration: "none", fontSize: 13, fontWeight: 500, letterSpacing: 0.4, opacity: 0.5, transition: "all 0.3s" }} onMouseEnter={e => { e.target.style.opacity = 1; e.target.style.color = A; }} onMouseLeave={e => { e.target.style.opacity = 0.5; e.target.style.color = text; }}>{l}</a>)}
-            {[{ href: "https://github.com/nikhilpatil1104", d: "M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" }, { href: "https://www.linkedin.com/in/nikhilpatil7/", d: "M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" }].map((l, i) => <a key={i} href={l.href} target="_blank" rel="noopener noreferrer" style={{ opacity: 0.45, transition: "opacity 0.3s", display: "flex", alignItems: "center" }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.45}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={l.d}/></svg></a>)}
-            <button onClick={() => setDark(!dark)} style={{ background: dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)", border: `1px solid ${border}`, borderRadius: 8, padding: "7px 10px", cursor: "pointer", fontSize: 14, color: text, transition: "all 0.2s", display: "flex", alignItems: "center" }}>{dark ? "\u2600\uFE0F" : "\u{1F319}"}</button>
-          </div>}
-          {isMob && <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button onClick={() => setDark(!dark)} style={{ background: "none", border: "none", fontSize: 16, cursor: "pointer", color: text }}>{dark ? "\u2600\uFE0F" : "\u{1F319}"}</button>
-            <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: text }}>{menuOpen ? "\u2715" : "\u2630"}</button>
-          </div>}
-        </div>
-        {isMob && menuOpen && <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: dark ? "rgba(12,14,20,0.96)" : "rgba(250,250,250,0.96)", backdropFilter: "blur(20px)", padding: 20, borderBottom: `1px solid ${border}` }}>{navLinks.map(l => <a key={l} href={`#${l.toLowerCase()}`} onClick={() => setMenuOpen(false)} style={{ display: "block", padding: "14px 0", textDecoration: "none", fontSize: 16, fontWeight: 500, borderBottom: `1px solid ${border}` }}>{l}</a>)}</div>}
-      </nav>
-
-      {/* HERO */}
-      <section style={{ position: "relative", minHeight: "100vh", display: "flex", alignItems: "center", padding: isMob ? "130px 20px 70px" : "0 64px", overflow: "hidden" }}>
-        <Starfield dark={dark} />
-        <div style={{ position: "absolute", top: "-10%", right: "-5%", width: 700, height: 700, borderRadius: "50%", background: `radial-gradient(circle, ${A}0C, transparent 65%)`, filter: "blur(60px)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: "-10%", left: "-10%", width: 500, height: 500, borderRadius: "50%", background: `radial-gradient(circle, ${A2}08, transparent 65%)`, filter: "blur(80px)", pointerEvents: "none" }} />
-        <div style={{ position: "relative", zIndex: 2, maxWidth: 1200, width: "100%", margin: "0 auto" }}>
-          <div style={{ maxWidth: 700 }}>
-            <div style={{ opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(20px)", transition: "all 0.8s cubic-bezier(.16,1,.3,1) 0.2s", display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 32, padding: "7px 18px 7px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600, letterSpacing: 0.5, background: dark ? "rgba(6,182,212,0.08)" : "rgba(6,182,212,0.06)", border: `1px solid ${A}20`, color: A }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34D399", boxShadow: "0 0 10px #34D39966", animation: "pulse 2s ease infinite" }} />Open to AI & Data Science Roles
-            </div>
-            <h1 style={{ fontSize: isMob ? 46 : 76, fontWeight: 900, lineHeight: 1.0, letterSpacing: -3, marginBottom: 14, opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(30px)", transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.35s" }}>
-              <span>Nikhil </span><span style={{ background: `linear-gradient(135deg, ${A}, ${A2}, #F472B6)`, backgroundSize: "200% auto", animation: "gradientMove 4s ease infinite", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Patil</span>
-            </h1>
-            <h2 style={{ fontSize: isMob ? 17 : 24, fontWeight: 400, opacity: loaded ? 0.5 : 0, marginBottom: 30, minHeight: 32, transition: "opacity 0.9s cubic-bezier(.16,1,.3,1) 0.5s" }}>
-              <Typewriter words={["AI Engineer & Researcher", "Building Agentic AI Systems", "Predictive Modeling & Bayesian Analysis", "Insurance Analytics & CLV Expert"]} />
-            </h2>
-            <p style={{ fontSize: isMob ? 14 : 16, lineHeight: 1.9, color: textDim, maxWidth: 560, marginBottom: 40, opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(20px)", transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.6s" }}>
-              Graduate Data Science student at UMBC building AI-powered systems — from agentic research agents and RAG applications to deep learning models and predictive analytics pipelines.
-            </p>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 56, opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(20px)", transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.7s" }}>
-              <MagButton href="#projects" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 30px", borderRadius: 12, background: `linear-gradient(135deg, ${A}, ${A2})`, color: "#fff", textDecoration: "none", fontWeight: 600, fontSize: 14, boxShadow: `0 4px 30px ${A}30`, border: "none", cursor: "pointer" }}>View AI Projects <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17l9.2-9.2M17 17V8H8"/></svg></MagButton>
-              <MagButton href="#contact" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 30px", borderRadius: 12, border: `1.5px solid ${border}`, background: "transparent", textDecoration: "none", fontWeight: 600, fontSize: 14, color: text, cursor: "pointer" }}>Get in Touch</MagButton>
-              <MagButton href="/Nikhil_Patil_Resume.pdf" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "14px 30px", borderRadius: 12, border: `1.5px solid ${border}`, background: "transparent", textDecoration: "none", fontWeight: 600, fontSize: 14, color: text, cursor: "pointer" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Resume
-              </MagButton>
-            </div>
-            <div style={{ display: "flex", gap: isMob ? 24 : 52, flexWrap: "wrap", opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(20px)", transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.85s" }}>
-              {[{ val: "3.80", label: "GPA at UMBC" }, { val: "5+", label: "AI/ML Projects" }, { val: "94%", label: "Model Accuracy" }, { val: "50K+", label: "Records Processed" }].map(s => <div key={s.label}><div style={{ fontSize: 30, fontWeight: 800, letterSpacing: -1, background: `linear-gradient(135deg, ${A}, ${A2})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{s.val}</div><div style={{ fontSize: 11, color: textDim, marginTop: 3, fontWeight: 500, letterSpacing: 0.3 }}>{s.label}</div></div>)}
-            </div>
+          <a href="#hero" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>
+            NP<span style={{ color: "var(--accent)" }}>.</span>
+          </a>
+          {!isMob && (
+            <ul style={{ display: "flex", gap: 28, listStyle: "none", alignItems: "center" }}>
+              {navLinks.map(l => <li key={l.label}><a href={l.href} className="nav-link">{l.label}</a></li>)}
+            </ul>
+          )}
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <a
+              href="/Nikhil_Patil_Resume.pdf"
+              target="_blank" rel="noopener noreferrer"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 18px", borderRadius: 9,
+                background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+                color: "#fff", fontSize: 12, fontWeight: 700,
+                boxShadow: "0 3px 16px rgba(6,182,212,0.25)",
+                transition: "all 0.25s"
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(6,182,212,0.35)"; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 3px 16px rgba(6,182,212,0.25)"; }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Resume
+            </a>
+            {isMob && (
+              <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", color: "var(--text)", cursor: "pointer", fontSize: 20, padding: "4px 6px" }}>
+                {menuOpen ? "✕" : "☰"}
+              </button>
+            )}
           </div>
         </div>
-        <div style={{ position: "absolute", bottom: 36, left: "50%", transform: "translateX(-50%)", opacity: scrollY > 100 ? 0 : 0.4, transition: "opacity 0.5s", animation: "float 2.5s ease infinite", textAlign: "center" }}>
-          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Scroll</div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-        </div>
-      </section>
-
-      {/* ABOUT */}
-      <section id="about" style={{ padding: pad, background: bg2 }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <Reveal><span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: A, display: "block", marginBottom: 14 }}>About</span></Reveal>
-          <div style={{ display: "grid", gridTemplateColumns: isMob ? "1fr" : "1.2fr 1fr", gap: 56, alignItems: "start" }}>
-            <Reveal delay={0.1}><div>
-              <h2 style={{ fontSize: isMob ? 28 : 40, fontWeight: 800, lineHeight: 1.12, letterSpacing: -1, marginBottom: 28 }}>AI-First Thinker.<br /><span style={{ background: `linear-gradient(135deg, ${A}, ${A2})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Data-Driven Builder.</span></h2>
-              <p style={{ fontSize: 15, lineHeight: 1.95, color: textDim, marginBottom: 16 }}>I'm pursuing an M.S. in Data Science at UMBC with a 3.80 GPA, specializing in AI systems, Bayesian statistics, and econometric analysis.</p>
-              <p style={{ fontSize: 15, lineHeight: 1.95, color: textDim, marginBottom: 16 }}>At Buildstone Realty Advisors, I built ETL pipelines, Power BI dashboards, and predictive models for CLV and insurance pricing — cutting reporting time by 40% and improving decision efficiency by 35%.</p>
-              <p style={{ fontSize: 15, lineHeight: 1.95, color: textDim }}>I build agentic AI systems, RAG applications, and deep learning models. I communicate complex AI findings to drive data-informed decisions.</p>
-            </div></Reveal>
-            <Reveal delay={0.25}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {[{ icon: "\u{1F916}", title: "AI & LLMs", text: "Agentic AI, RAG, GPT-4" }, { icon: "\u{1F4CA}", title: "Statistics", text: "Bayesian, Econometrics" }, { icon: "\u{1F393}", title: "Education", text: "M.S. Data Science, UMBC" }, { icon: "\u{1F4CD}", title: "Location", text: "Baltimore, MD" }, { icon: "\u{1F4BC}", title: "Experience", text: "Data Analyst + AI Builder" }, { icon: "\u{1F3AF}", title: "Domain", text: "Insurance Analytics, CLV" }].map(item => (
-                <div key={item.title} style={{ background: cardBg, borderRadius: 14, padding: 20, border: `1px solid ${border}`, transition: "all 0.35s cubic-bezier(.16,1,.3,1)", cursor: "default" }} onMouseEnter={e => { e.currentTarget.style.borderColor = A + "40"; e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = `0 8px 24px ${A}08`; }} onMouseLeave={e => { e.currentTarget.style.borderColor = border; e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}>
-                  <div style={{ fontSize: 24, marginBottom: 8 }}>{item.icon}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{item.title}</div>
-                  <div style={{ fontSize: 11, color: textDim, lineHeight: 1.5 }}>{item.text}</div>
-                </div>
-              ))}
-            </div></Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* SKILLS */}
-      <section id="skills" style={{ padding: pad }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <Reveal><span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: A, display: "block", marginBottom: 14 }}>Technical Arsenal</span><h2 style={{ fontSize: isMob ? 28 : 40, fontWeight: 800, letterSpacing: -1, marginBottom: 48 }}>Skills & Technologies</h2></Reveal>
-          <div style={{ display: "grid", gridTemplateColumns: isMob ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-            {skillGroups.map((g, gi) => <Reveal key={g.title} delay={gi * 0.08}><div style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 16, padding: 28, transition: "all 0.35s cubic-bezier(.16,1,.3,1)", height: "100%" }} onMouseEnter={e => { e.currentTarget.style.borderColor = A + "25"; e.currentTarget.style.boxShadow = `0 8px 32px ${A}06`; }} onMouseLeave={e => { e.currentTarget.style.borderColor = border; e.currentTarget.style.boxShadow = "none"; }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}><span style={{ fontSize: 22 }}>{g.icon}</span><h3 style={{ fontSize: 15, fontWeight: 700 }}>{g.title}</h3></div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{g.tags.map(t => <SkillTag key={t} label={t} dark={dark} A={A} text={text} />)}</div>
-            </div></Reveal>)}
-          </div>
-        </div>
-      </section>
-
-      {/* EXPERIENCE */}
-      <section id="experience" style={{ padding: pad, background: bg2 }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <Reveal><span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: A, display: "block", marginBottom: 14 }}>Career</span><h2 style={{ fontSize: isMob ? 28 : 40, fontWeight: 800, letterSpacing: -1, marginBottom: 48 }}>Professional Experience</h2></Reveal>
-          <div style={{ maxWidth: 800 }}>
-            {experiences.map((exp, idx) => { const ref = useRef(null); const vis = useOnScreen(ref); return (
-              <div ref={ref} key={idx} style={{ display: "flex", gap: isMob ? 16 : 28, opacity: vis ? 1 : 0, transform: vis ? "none" : "translateX(-30px)", transition: `all 0.8s cubic-bezier(.16,1,.3,1) ${idx * 0.15}s` }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 18, flexShrink: 0 }}>
-                  <div style={{ width: 14, height: 14, borderRadius: "50%", background: `linear-gradient(135deg, ${A}, ${A2})`, border: `3px solid ${bg2}`, boxShadow: `0 0 0 2px ${A}`, flexShrink: 0 }} />
-                  <div style={{ width: 2, flex: 1, background: `linear-gradient(to bottom, ${A}30, transparent)` }} />
-                </div>
-                <div style={{ paddingBottom: 44 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: A, letterSpacing: 1.5, textTransform: "uppercase" }}>{exp.date}</span>
-                  <h3 style={{ fontSize: 20, fontWeight: 800, marginTop: 5, marginBottom: 3 }}>{exp.role}</h3>
-                  <p style={{ fontSize: 14, fontWeight: 500, color: textDim, marginBottom: 16 }}>{exp.company}</p>
-                  {exp.bullets.map((b, i) => <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 13.5, lineHeight: 1.8, color: textDim }}><span style={{ color: A, marginTop: 8, flexShrink: 0, fontSize: 5 }}>{"\u25CF"}</span><span>{b}</span></div>)}
-                </div>
-              </div>
-            ); })}
-          </div>
-        </div>
-      </section>
-
-      {/* PROJECTS */}
-      <section id="projects" style={{ padding: pad }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <Reveal><span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: A, display: "block", marginBottom: 14 }}>Portfolio</span><h2 style={{ fontSize: isMob ? 28 : 40, fontWeight: 800, letterSpacing: -1, marginBottom: 8 }}>AI & ML Projects</h2><p style={{ fontSize: 15, color: textDim, marginBottom: 32, maxWidth: 520 }}>Hands-on AI systems — from agentic architectures and RAG pipelines to deep learning and predictive analytics.</p></Reveal>
-          <Reveal delay={0.08}><div style={{ display: "flex", gap: 8, marginBottom: 36, flexWrap: "wrap" }}>
-            {["All", "AI", "ML", "Web"].map(f => <button key={f} onClick={() => setFilter(f)} style={{ padding: "8px 20px", borderRadius: 100, border: filter === f ? "none" : `1px solid ${border}`, background: filter === f ? `linear-gradient(135deg, ${A}, ${A2})` : "transparent", color: filter === f ? "#fff" : text, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", transition: "all 0.3s cubic-bezier(.16,1,.3,1)", transform: filter === f ? "scale(1.05)" : "scale(1)" }}>{f === "All" ? "All Projects" : f}</button>)}
-          </div></Reveal>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {filtered.map((p, i) => { const ref = useRef(null); const vis = useOnScreen(ref); const [hov, setHov] = useState(false); return (
-              <div ref={ref} key={p.title} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ background: hov ? (dark ? "rgba(255,255,255,0.04)" : "#fff") : cardBg, border: `1px solid ${hov ? A + "30" : border}`, borderRadius: 18, padding: isMob ? 24 : 36, opacity: vis ? 1 : 0, transform: vis ? (hov ? "translateY(-4px)" : "none") : "translateY(30px)", transition: `opacity 0.7s cubic-bezier(.16,1,.3,1) ${i * 0.08}s, transform 0.5s cubic-bezier(.16,1,.3,1), border-color 0.3s, background 0.3s, box-shadow 0.3s`, boxShadow: hov ? `0 16px 48px ${A}0A` : "none" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMob ? "flex-start" : "center", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                    <span style={{ fontSize: 30, animation: hov ? "float 2s ease infinite" : "none" }}>{p.icon}</span>
-                    <div><h3 style={{ fontSize: isMob ? 18 : 22, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.25 }}>{p.title}</h3><span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", color: p.tagColor, background: p.tagColor + "14", padding: "3px 10px", borderRadius: 100, marginTop: 5, display: "inline-block" }}>{p.tag}</span></div>
-                  </div>
-                  {p.github && <a href={p.github} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: A, textDecoration: "none", padding: "6px 14px", borderRadius: 8, border: `1px solid ${A}25`, transition: "all 0.25s", flexShrink: 0 }} onMouseEnter={e => { e.currentTarget.style.background = A + "12"; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>GitHub</a>}
-                </div>
-                <p style={{ fontSize: 14, lineHeight: 1.85, color: textDim, marginBottom: 18, maxWidth: 800 }}>{p.description}</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>{p.tech.map(t => <span key={t} style={{ fontSize: 11, fontWeight: 500, padding: "5px 12px", borderRadius: 100, background: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)" }}>{t}</span>)}</div>
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>{p.highlights.map(h => <span key={h} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: p.tagColor }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>{h}</span>)}</div>
-              </div>
-            ); })}
-          </div>
-        </div>
-      </section>
-
-      {/* EDUCATION */}
-      <section id="education" style={{ padding: pad, background: bg2 }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <Reveal><span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: A, display: "block", marginBottom: 14 }}>Academic</span><h2 style={{ fontSize: isMob ? 28 : 40, fontWeight: 800, letterSpacing: -1, marginBottom: 48 }}>Education</h2></Reveal>
-          <div style={{ display: "grid", gridTemplateColumns: isMob ? "1fr" : "1fr 1fr", gap: 18, maxWidth: 900, marginBottom: 52 }}>
-            {[{ school: "University of Maryland Baltimore County", degree: "M.S., Data Science", year: "Expected May 2027", gpa: "3.80", courses: "Bayesian Statistics, Econometrics, Machine Learning & Gen AI, Big Data, Statistical Modeling", icon: "\u{1F393}" }, { school: "University of Mumbai", degree: "B.E., Electronics & Computer Science", year: "Jun 2025", gpa: "3.33", courses: "ML, Deep Learning, NLP, Database Management, AI", icon: "\u{1F3DB}\uFE0F" }].map((edu, i) => (
-              <Reveal key={edu.school} delay={i * 0.12}><div style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 16, padding: 28, height: "100%", transition: "all 0.35s cubic-bezier(.16,1,.3,1)" }} onMouseEnter={e => { e.currentTarget.style.borderColor = A + "30"; e.currentTarget.style.transform = "translateY(-3px)"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = border; e.currentTarget.style.transform = "none"; }}>
-                <span style={{ fontSize: 34 }}>{edu.icon}</span>
-                <h3 style={{ fontSize: 17, fontWeight: 800, marginTop: 12, marginBottom: 4, lineHeight: 1.3 }}>{edu.school}</h3>
-                <p style={{ fontSize: 14, fontWeight: 600, color: A, marginBottom: 12 }}>{edu.degree}</p>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, fontSize: 12, color: textDim }}><span>{edu.year}</span><span style={{ fontWeight: 700, color: A2 }}>GPA: {edu.gpa}</span></div>
-                <p style={{ fontSize: 12, lineHeight: 1.7, color: textDim }}><span style={{ fontWeight: 600, color: text, opacity: 0.65 }}>Coursework:</span> {edu.courses}</p>
-              </div></Reveal>
+        {isMob && menuOpen && (
+          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "rgba(8,11,18,0.97)", backdropFilter: "blur(24px)", borderBottom: "1px solid var(--border)", padding: "12px 20px 20px" }}>
+            {navLinks.map(l => (
+              <a key={l.label} href={l.href} onClick={() => setMenuOpen(false)}
+                style={{ display: "block", padding: "14px 0", borderBottom: "1px solid var(--border)", fontSize: 16, fontWeight: 600 }}>
+                {l.label}
+              </a>
             ))}
           </div>
-          <Reveal><h3 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5, marginBottom: 22 }}>Certifications</h3>
+        )}
+      </nav>
+
+      {/* ── HERO ── */}
+      <section id="hero" style={{ position: "relative", minHeight: "100vh", display: "flex", alignItems: "center", padding: isMob ? "120px 20px 70px" : "0 56px", overflow: "hidden" }}>
+        <div className="hero-grid" />
+        <div className="hero-glow" />
+        <div className="hero-glow2" />
+
+        <div style={{ position: "relative", zIndex: 2, maxWidth: 1200, width: "100%", margin: "0 auto" }}>
+          <div style={{ maxWidth: 720 }}>
+            {/* Status chip */}
+            <div style={{
+              opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(16px)",
+              transition: "all 0.8s cubic-bezier(.16,1,.3,1) 0.2s",
+              display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 32,
+              padding: "7px 18px 7px 12px", borderRadius: 100,
+              background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.18)",
+              fontSize: 12, fontWeight: 600, letterSpacing: 0.3, color: "var(--accent)"
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34D399", animation: "pulse 2s ease infinite", display: "inline-block" }} />
+              Open to AI/ML & Data Science Roles
+            </div>
+
+            {/* Title */}
+            <h1 className="hero-title" style={{
+              fontFamily: "var(--display)", fontSize: isMob ? 46 : 74, fontWeight: 800,
+              lineHeight: 1.0, letterSpacing: -3, marginBottom: 16,
+              opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(28px)",
+              transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.35s"
+            }}>
+              Building AI That<br />
+              <span className="gradient-text">Actually Works</span>
+            </h1>
+
+            {/* Typewriter */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10, marginBottom: 24,
+              opacity: loaded ? 1 : 0, transition: "opacity 0.9s 0.5s"
+            }}>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)", letterSpacing: 0.5 }}>currently building</span>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--accent)" }}>
+                <Typewriter words={["Agentic AI Systems", "RAG Pipelines", "Deep Learning Models", "Bayesian Analytics", "Insurance AI"]} />
+              </span>
+            </div>
+
+            {/* Sub */}
+            <p style={{
+              fontSize: isMob ? 14.5 : 16, lineHeight: 1.9, color: "var(--text-dim)",
+              maxWidth: 560, marginBottom: 40,
+              opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(16px)",
+              transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.55s"
+            }}>
+              Graduate Data Science student at UMBC building AI systems that ship —
+              agentic research agents, RAG pipelines, deep learning models, and predictive analytics
+              for regulated industries.
+            </p>
+
+            {/* CTAs */}
+            <div style={{
+              display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 64,
+              opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(16px)",
+              transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.65s"
+            }}>
+              {[
+                { label: "View Projects", href: "#projects", primary: true },
+                { label: "Download Resume", href: "/Nikhil_Patil_Resume.pdf", primary: false },
+                { label: "nikhilpatil1104@gmail.com", href: "mailto:nikhilpatil1104@gmail.com", primary: false, ghost: true },
+              ].map(btn => (
+                <a key={btn.label} href={btn.href} target={btn.href.startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 7,
+                    padding: btn.ghost ? "12px 20px" : "13px 28px",
+                    borderRadius: 11, fontWeight: 700, fontSize: btn.ghost ? 12 : 14,
+                    transition: "all 0.3s cubic-bezier(.16,1,.3,1)",
+                    ...(btn.primary ? {
+                      background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+                      color: "#fff", boxShadow: "0 4px 24px rgba(6,182,212,0.28)",
+                      border: "none"
+                    } : btn.ghost ? {
+                      background: "transparent", color: "var(--text-dim)",
+                      border: "1px solid var(--border)", fontFamily: "var(--mono)"
+                    } : {
+                      background: "transparent", color: "var(--text)",
+                      border: "1px solid var(--border)"
+                    })
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = "none"; }}
+                >
+                  {btn.primary ? (
+                    <>{btn.label}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></>
+                  ) : btn.label}
+                </a>
+              ))}
+            </div>
+
+            {/* Stats */}
+            <div style={{
+              display: "flex", flexWrap: "wrap", gap: isMob ? 28 : 0, alignItems: "stretch",
+              opacity: loaded ? 1 : 0, transform: loaded ? "none" : "translateY(16px)",
+              transition: "all 0.9s cubic-bezier(.16,1,.3,1) 0.8s"
+            }}>
+              {stats.map((s, i) => (
+                <div key={s.label} style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
+                  {i > 0 && !isMob && <div style={{ width: 1, background: "var(--border)", margin: "0 36px", alignSelf: "stretch" }} />}
+                  <div>
+                    <div style={{ fontFamily: "var(--display)", fontSize: 32, fontWeight: 800, letterSpacing: -1.5, lineHeight: 1 }}>
+                      {s.display ? (
+                        <span className="gradient-text">{s.display}</span>
+                      ) : (
+                        <span className="gradient-text"><Counter target={s.target} suffix={s.suffix} /></span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginTop: 5 }}>{s.label}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--text-dim)", marginTop: 2 }}>{s.sub}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── ABOUT ── */}
+      <section id="about" style={{ padding: isMob ? "72px 20px" : "100px 56px", background: "var(--bg2)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <Reveal>
+            <span className="section-tag">// about</span>
+            <h2 style={{ fontFamily: "var(--display)", fontSize: isMob ? 30 : 46, fontWeight: 800, letterSpacing: -1.5, marginBottom: 56 }}>Who I Am</h2>
+          </Reveal>
+          <div style={{ display: "grid", gridTemplateColumns: isMob ? "1fr" : "1.1fr 1fr", gap: 56, alignItems: "start" }}>
+            <Reveal delay={0.1}>
+              <p style={{ fontSize: 15.5, lineHeight: 1.95, color: "var(--text-dim)", marginBottom: 18 }}>
+                I'm a graduate Data Science student at <strong>UMBC (3.80 GPA)</strong>, specializing in AI systems, Bayesian statistics, and econometric modeling.
+              </p>
+              <p style={{ fontSize: 15.5, lineHeight: 1.95, color: "var(--text-dim)", marginBottom: 18 }}>
+                At Buildstone Realty Advisors, I built <strong>ETL pipelines, Power BI dashboards, and predictive models</strong> for CLV and insurance pricing — cutting reporting time by 40% and improving decision efficiency by 35%.
+              </p>
+              <p style={{ fontSize: 15.5, lineHeight: 1.95, color: "var(--text-dim)" }}>
+                I believe the gap between "demo" and "deployed" is where real engineering happens. That's where I work — building agentic AI systems, RAG applications, and deep learning models that actually ship.
+              </p>
+            </Reveal>
+            <Reveal delay={0.22}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {[
+                  { icon: "🎓", title: "M.S. Data Science", sub: "UMBC — GPA 3.80/4.0" },
+                  { icon: "🤖", title: "Agentic AI Builder", sub: "Custom loops, no frameworks" },
+                  { icon: "📊", title: "Bayesian Analyst", sub: "Econometrics & Predictive ML" },
+                  { icon: "🏢", title: "Insurance Domain", sub: "CLV, Pure Premium, Risk" },
+                  { icon: "⚡", title: "94% CV Accuracy", sub: "Glaucoma detection CNN" },
+                  { icon: "📍", title: "Baltimore, MD", sub: "Open to relocation" },
+                ].map(card => (
+                  <div key={card.title} style={{
+                    background: "var(--card)", border: "1px solid var(--border)",
+                    borderRadius: 14, padding: "20px 18px",
+                    transition: "all 0.3s cubic-bezier(.16,1,.3,1)", cursor: "default"
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(6,182,212,0.35)"; e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(6,182,212,0.07)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
+                  >
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>{card.icon}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{card.title}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>{card.sub}</div>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SKILLS ── */}
+      <section id="skills" style={{ padding: isMob ? "72px 20px" : "100px 56px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <Reveal>
+            <span className="section-tag">// skills</span>
+            <h2 style={{ fontFamily: "var(--display)", fontSize: isMob ? 30 : 46, fontWeight: 800, letterSpacing: -1.5, marginBottom: 48 }}>Technical Stack</h2>
+          </Reveal>
+          <div style={{ display: "grid", gridTemplateColumns: isMob ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+            {skillGroups.map((g, i) => <SkillGroup key={g.title} {...g} delay={i * 0.07} />)}
+          </div>
+        </div>
+      </section>
+
+      {/* ── PROJECTS (BENTO) ── */}
+      <section id="projects" style={{ padding: isMob ? "72px 20px" : "100px 56px", background: "var(--bg2)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <Reveal>
+            <span className="section-tag">// featured</span>
+            <h2 style={{ fontFamily: "var(--display)", fontSize: isMob ? 30 : 46, fontWeight: 800, letterSpacing: -1.5, marginBottom: 8 }}>AI Systems Built</h2>
+            <p style={{ fontSize: 15, color: "var(--text-dim)", marginBottom: 36 }}>End-to-end engineering — not tutorials.</p>
+          </Reveal>
+
+          {/* Filter */}
+          <Reveal delay={0.08}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 36, flexWrap: "wrap" }}>
+              {["All", "AI", "ML", "Data"].map(f => (
+                <button key={f} onClick={() => setFilter(f)} className={`filter-btn${filter === f ? " active" : ""}`}>
+                  {f === "All" ? "All Projects" : f === "AI" ? "AI / LLM" : f === "ML" ? "Predictive ML" : "Data Engineering"}
+                </button>
+              ))}
+            </div>
+          </Reveal>
+
+          {/* Bento Grid */}
+          <div className="bento-grid" style={{ display: "grid", gridTemplateColumns: isMob ? "1fr" : "repeat(12, 1fr)", gap: 16 }}>
+            {filtered.map((p, i) => {
+              const colSpan = isMob ? 12 : p.size === "large" ? 7 : p.size === "wide" ? 12 : p.size === "small" ? 5 : 5;
+              return (
+                <Reveal key={p.id} delay={i * 0.08} style={{ gridColumn: `span ${colSpan}` }}>
+                  <BentoCard
+                    tag={p.tag}
+                    tagColor={p.tagColor}
+                    title={p.title}
+                    desc={p.desc}
+                    caseRows={p.caseRows}
+                    tech={p.tech}
+                    accent={p.accent}
+                    style={{ height: "100%" }}
+                    actions={
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {p.github && (
+                          <a href={p.github} target="_blank" rel="noopener noreferrer" className="bento-btn">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                            View Code
+                          </a>
+                        )}
+                      </div>
+                    }
+                  >
+                    {/* Pipeline for large card */}
+                    {p.pipeline && (
+                      <div className="pipeline-row">
+                        {p.pipeline.map((step, si) => (
+                          <span key={step} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span className="pipeline-step">{step}</span>
+                            {si < p.pipeline.length - 1 && <span className="pipeline-arrow">→</span>}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </BentoCard>
+                </Reveal>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── EXPERIENCE ── */}
+      <section id="experience" style={{ padding: isMob ? "72px 20px" : "100px 56px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <Reveal>
+            <span className="section-tag">// experience</span>
+            <h2 style={{ fontFamily: "var(--display)", fontSize: isMob ? 30 : 46, fontWeight: 800, letterSpacing: -1.5, marginBottom: 52 }}>Where I've Worked</h2>
+          </Reveal>
+          <div style={{ maxWidth: 820 }}>
+            {experiences.map((exp, i) => (
+              <TimelineItem
+                key={exp.role}
+                {...exp}
+                delay={i * 0.14}
+                isLast={i === experiences.length - 1}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── EDUCATION ── */}
+      <section id="education" style={{ padding: isMob ? "72px 20px" : "100px 56px", background: "var(--bg2)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <Reveal>
+            <span className="section-tag">// education</span>
+            <h2 style={{ fontFamily: "var(--display)", fontSize: isMob ? 30 : 46, fontWeight: 800, letterSpacing: -1.5, marginBottom: 48 }}>Education</h2>
+          </Reveal>
+          <div style={{ display: "grid", gridTemplateColumns: isMob ? "1fr" : "1fr 1fr", gap: 18, maxWidth: 900, marginBottom: 52 }}>
+            {[
+              {
+                school: "University of Maryland Baltimore County",
+                degree: "M.S., Data Science",
+                year: "Expected May 2027",
+                gpa: "3.80",
+                courses: "Bayesian Statistics · Econometrics · Machine Learning & Gen AI · Big Data · Statistical Modeling",
+                icon: "🎓"
+              },
+              {
+                school: "University of Mumbai",
+                degree: "B.E., Electronics & Computer Science",
+                year: "Graduated Jun 2025",
+                gpa: "3.33",
+                courses: "Machine Learning · Deep Learning · NLP · Database Management · Artificial Intelligence",
+                icon: "🏛️"
+              }
+            ].map((edu, i) => (
+              <Reveal key={edu.school} delay={i * 0.12}>
+                <div style={{
+                  background: "var(--card)", border: "1px solid var(--border)",
+                  borderRadius: 16, padding: 30, height: "100%",
+                  transition: "all 0.35s cubic-bezier(.16,1,.3,1)"
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(6,182,212,0.3)"; e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 12px 36px rgba(6,182,212,0.07)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
+                >
+                  <span style={{ fontSize: 36, display: "block", marginBottom: 14 }}>{edu.icon}</span>
+                  <h3 style={{ fontFamily: "var(--display)", fontSize: 17, fontWeight: 700, marginBottom: 6, lineHeight: 1.3 }}>{edu.school}</h3>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)", marginBottom: 14 }}>{edu.degree}</p>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, fontSize: 12, color: "var(--text-dim)" }}>
+                    <span>{edu.year}</span>
+                    <span style={{ fontWeight: 700, color: "var(--accent2)" }}>GPA: {edu.gpa}</span>
+                  </div>
+                  <p style={{ fontSize: 12, lineHeight: 1.8, color: "var(--text-dim)" }}>
+                    <span style={{ fontWeight: 600, color: "var(--text)", opacity: 0.65 }}>Coursework: </span>{edu.courses}
+                  </p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          {/* Certs */}
+          <Reveal delay={0.1}>
+            <h3 style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, letterSpacing: -0.4, marginBottom: 20 }}>Certifications</h3>
             <div style={{ display: "grid", gridTemplateColumns: isMob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 14 }}>
-              {certs.map(c => <div key={c.name} style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 14, padding: 20, textAlign: "center", transition: "all 0.3s cubic-bezier(.16,1,.3,1)" }} onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.borderColor = A + "25"; }} onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.borderColor = border; }}>
-                <span style={{ fontSize: 26, display: "block", marginBottom: 8 }}>{c.icon}</span>
-                <p style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.4, marginBottom: 5 }}>{c.name}</p>
-                <p style={{ fontSize: 10, color: textDim }}>{c.org}</p>
-              </div>)}
+              {[
+                { name: "Generative AI Essentials: Using LLMs to Work with Data", org: "IBM SkillsBuild", icon: "🧬" },
+                { name: "Enterprise Data Science in Practice", org: "IBM SkillsBuild", icon: "📡" },
+                { name: "Python For Beginners", org: "Udemy", icon: "🐍" },
+                { name: "Automated Machine Learning For Beginners", org: "Udemy", icon: "⚡" },
+              ].map(c => (
+                <div key={c.name} style={{
+                  background: "var(--card)", border: "1px solid var(--border)",
+                  borderRadius: 14, padding: 20, textAlign: "center",
+                  transition: "all 0.3s cubic-bezier(.16,1,.3,1)"
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.borderColor = "rgba(6,182,212,0.25)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.borderColor = "var(--border)"; }}
+                >
+                  <span style={{ fontSize: 26, display: "block", marginBottom: 8 }}>{c.icon}</span>
+                  <p style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.4, marginBottom: 6 }}>{c.name}</p>
+                  <p style={{ fontSize: 10, color: "var(--text-dim)" }}>{c.org}</p>
+                </div>
+              ))}
             </div>
           </Reveal>
         </div>
       </section>
 
-      {/* CONTACT */}
-      <section id="contact" style={{ padding: pad }}>
-        <div style={{ maxWidth: 560, margin: "0 auto" }}>
-          <Reveal><div style={{ textAlign: "center", marginBottom: 36 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: A, display: "block", marginBottom: 14 }}>Contact</span>
-            <h2 style={{ fontSize: isMob ? 28 : 40, fontWeight: 800, letterSpacing: -1, marginBottom: 12 }}>Let's Build Something <span style={{ background: `linear-gradient(135deg, ${A}, ${A2})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Intelligent</span></h2>
-            <p style={{ fontSize: 14, color: textDim, lineHeight: 1.8 }}>Open to AI Engineering, Data Science, and ML roles.</p>
-          </div></Reveal>
-          <Reveal delay={0.1}><div style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 18, padding: isMob ? 24 : 36 }}>
-            {["name", "email"].map(f => <input key={f} type={f === "email" ? "email" : "text"} placeholder={f === "name" ? "Your Name" : "Your Email"} value={form[f]} onChange={e => setForm({ ...form, [f]: e.target.value })} style={{ width: "100%", padding: "13px 18px", marginBottom: 12, borderRadius: 12, border: `1px solid ${border}`, background: dark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.015)", color: text, fontSize: 14, outline: "none", fontFamily: "inherit", transition: "border-color 0.3s, box-shadow 0.3s" }} onFocus={e => { e.target.style.borderColor = A; e.target.style.boxShadow = `0 0 0 3px ${A}15`; }} onBlur={e => { e.target.style.borderColor = border; e.target.style.boxShadow = "none"; }} />)}
-            <textarea placeholder="Your Message" rows={4} value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} style={{ width: "100%", padding: "13px 18px", marginBottom: 14, borderRadius: 12, border: `1px solid ${border}`, background: dark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.015)", color: text, fontSize: 14, resize: "vertical", outline: "none", fontFamily: "inherit", transition: "border-color 0.3s, box-shadow 0.3s" }} onFocus={e => { e.target.style.borderColor = A; e.target.style.boxShadow = `0 0 0 3px ${A}15`; }} onBlur={e => { e.target.style.borderColor = border; e.target.style.boxShadow = "none"; }} />
-            <button onClick={handleSubmit} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 15, background: `linear-gradient(135deg, ${A}, ${A2})`, color: "#fff", fontFamily: "inherit", boxShadow: `0 4px 24px ${A}25`, transition: "transform 0.3s, box-shadow 0.3s" }} onMouseEnter={e => { e.target.style.transform = "translateY(-2px)"; e.target.style.boxShadow = `0 8px 32px ${A}35`; }} onMouseLeave={e => { e.target.style.transform = "none"; e.target.style.boxShadow = `0 4px 24px ${A}25`; }}>Send Message</button>
-            {formMsg && <p style={{ textAlign: "center", marginTop: 12, fontSize: 13, color: A, fontWeight: 500 }}>{formMsg}</p>}
-          </div></Reveal>
-          <Reveal delay={0.15}><div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 28, flexWrap: "wrap" }}>
-            {[{ label: "nikhilpatil1104@gmail.com", href: "mailto:nikhilpatil1104@gmail.com", icon: "\u2709\uFE0F" }, { label: "LinkedIn", href: "https://www.linkedin.com/in/nikhilpatil7/", icon: "\u{1F517}" }, { label: "GitHub", href: "https://github.com/nikhilpatil1104", icon: "\u{1F4BB}" }].map(l => <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 500, textDecoration: "none", color: textDim, transition: "color 0.3s" }} onMouseEnter={e => e.currentTarget.style.color = A} onMouseLeave={e => e.currentTarget.style.color = textDim}>{l.icon} {l.label}</a>)}
-          </div></Reveal>
+      {/* ── CONTACT ── */}
+      <section id="contact" style={{ padding: isMob ? "72px 20px" : "100px 56px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <Reveal>
+            <div style={{ textAlign: "center", marginBottom: 52 }}>
+              <span className="section-tag" style={{ display: "inline-block", marginBottom: 16 }}>// contact</span>
+              <h2 style={{ fontFamily: "var(--display)", fontSize: isMob ? 36 : 58, fontWeight: 800, letterSpacing: -2, lineHeight: 1.05, marginBottom: 16 }}>
+                Let's Build<br /><span className="gradient-text">Something</span>
+              </h2>
+              <p style={{ fontSize: 15, color: "var(--text-dim)", maxWidth: 400, margin: "0 auto" }}>
+                Open to Senior AI/ML Engineer &amp; Data Science roles.<br />Available immediately — open to relocation.
+              </p>
+            </div>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+              <button onClick={copyEmail} className="contact-cta">
+                nikhilpatil1104@gmail.com
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              </button>
+              <a href="mailto:nikhilpatil1104@gmail.com" className="contact-send" aria-label="Send email">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </a>
+            </div>
+            {copied && (
+              <p style={{ textAlign: "center", fontSize: 12, color: "#34D399", fontWeight: 600, fontFamily: "var(--mono)", marginBottom: 8, letterSpacing: 0.5 }}>✓ Copied to clipboard</p>
+            )}
+          </Reveal>
+          <Reveal delay={0.18}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+              {[
+                { label: "LinkedIn", href: "https://www.linkedin.com/in/nikhilpatil7/", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2z"/><circle cx="4" cy="4" r="2"/></svg> },
+                { label: "GitHub", href: "https://github.com/nikhilpatil1104", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg> },
+              ].map(l => (
+                <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer" className="social-link">
+                  {l.icon}{l.label}
+                </a>
+              ))}
+            </div>
+          </Reveal>
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer style={{ padding: "28px 20px", borderTop: `1px solid ${border}`, textAlign: "center", background: bg2 }}>
-        <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 12, alignItems: "center" }}>
-          {[{ href: "https://www.linkedin.com/in/nikhilpatil7/", d: "M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" }, { href: "https://github.com/nikhilpatil1104", d: "M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" }].map((l, i) => <a key={i} href={l.href} target="_blank" rel="noopener noreferrer" style={{ color: textDim, transition: "color 0.3s", display: "flex", alignItems: "center" }} onMouseEnter={e => e.currentTarget.style.color = A} onMouseLeave={e => e.currentTarget.style.color = textDim}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d={l.d}/></svg></a>)}
-          <a href="mailto:nikhilpatil1104@gmail.com" style={{ color: textDim, transition: "color 0.3s", display: "flex", alignItems: "center" }} onMouseEnter={e => e.currentTarget.style.color = A} onMouseLeave={e => e.currentTarget.style.color = textDim}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 8L2 4"/></svg></a>
+      {/* ── FOOTER ── */}
+      <footer style={{ padding: "28px 56px", borderTop: "1px solid var(--border)", background: "var(--bg2)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <span style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 15 }}>Nikhil Patil</span>
+          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>© 2026 — Built from scratch, no templates.</span>
+          <a href="#hero" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "var(--text-dim)", transition: "color 0.2s" }}
+            onMouseEnter={e => e.currentTarget.style.color = "var(--accent)"}
+            onMouseLeave={e => e.currentTarget.style.color = "var(--text-dim)"}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 15l7-7 7 7"/></svg>
+            Top
+          </a>
         </div>
-        <p style={{ fontSize: 11, color: textDim }}>{"\u00A9"} 2026 Nikhil Patil. Built with precision.</p>
       </footer>
-    </div>
+    </>
   );
 }
