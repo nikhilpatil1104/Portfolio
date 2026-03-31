@@ -639,8 +639,7 @@ export default function Portfolio() {
               background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.18)",
               fontSize: 12, fontWeight: 600, letterSpacing: 0.3, color: "var(--accent)"
             }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34D399", animation: "pulse 2s ease infinite", display: "inline-block" }} />
-              Open to AI/ML & Data Science Roles
+             
             </div>
 
             {/* Title */}
@@ -977,7 +976,7 @@ export default function Portfolio() {
                 Let's Build<br /><span className="gradient-text">Something</span>
               </h2>
               <p style={{ fontSize: 15, color: "var(--text-dim)", maxWidth: 400, margin: "0 auto" }}>
-                Open to Senior AI/ML Engineer &amp; Data Science roles.<br />Available immediately — open to relocation.
+                Open to AI/ML Engineer &amp; Data Science roles.<br />Available immediately — open to relocation.
               </p>
             </div>
           </Reveal>
